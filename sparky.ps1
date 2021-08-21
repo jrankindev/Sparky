@@ -1,15 +1,23 @@
+#if not running as admin then start a new powershell process as admin with script assuming logged in user has rights
+if (-NOT ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator"))  
+{  
+  $arguments = "& '" +$myinvocation.mycommand.definition + "'"
+  Start-Process powershell -Verb runAs -ArgumentList $arguments
+  Break
+}
+
+#start time of script running
+$startTime = (Get-Date)
+
 #clear screen so output text is readable
 Clear-Host
 
 #setup vars
-#$stringToFind = '    <font color="red">\r\n    <P>Learning HTML will enable you to:\r\n    <UL>\r\n    <LI>create your own simple pages\r\n    <LI>read and appreciate pages created by others\r\n    <LI>develop an understanding of the creative and literary implications of web-texts\r\n    <LI>have the confidence to branch out into more complex web design \r\n    </UL></P>\r\n    </font>'
-$stringToFind = '    <font color="red">'
+$stringToFind = '    <font color="red">\r\n    <P>Learning HTML will enable you to:\r\n    <UL>\r\n    <LI>create your own simple pages\r\n    <LI>read and appreciate pages created by others\r\n    <LI>develop an understanding of the creative and literary implications of web-texts\r\n    <LI>have the confidence to branch out into more complex web design \r\n    </UL></P>\r\n    </font>'
 $inputDir = "$PSSCriptRoot\input"
 $outputDir = "$PSSCriptRoot\output"
 $expectedDirCount = 8
 $logStart = "  Sparky ->"
-
-
 
 #function to output message with highlighted text based on error state
 function Write-HostAdv {
@@ -54,6 +62,7 @@ function verifyString {
     $textCounter = 1
     foreach ($file in $directoryArray) {
         $fileContent = Get-Content -Path "$inputDir\$file" -Raw
+
         if (Select-String -InputObject $fileContent -Pattern $stringtoFind) {
             Write-HostAdv -code 0 -messageMain "File $textCounter '$($file.Name)' Verification:     " -messageStatus "SUCCESS"
             $textCounter++
@@ -84,33 +93,36 @@ $directoryArray = Get-ChildItem -Path $inputDir | Where-Object { $_.Extension -e
 foreach ($file in $directoryArray) {
 
     Write-Host "$logStart Converting $file.  "
-    $fileContent = Get-Content -Path "$inputDir\$file"
-    $fileContentModified = $fileContent.Replace($stringToFind, "")
 
-    Out-File -FilePath "$outputDir\$($file.Name)" -InputObject $fileContentModified
+    #put file into arraylist
+    $fileContent = [System.Collections.ArrayList](Get-Content -Path "$inputDir\$file")
+    #remove 9 elements starting at element 16
+    $fileContent.RemoveRange(16, 9)
 
-    Start-Sleep -Milliseconds 100
+    Out-File -FilePath "$outputDir\$($file.Name)" -InputObject $fileContent
+
+    Start-Sleep -Seconds 1
 
     $ie = new-object -ComObject "InternetExplorer.Application"
     $requestUri = "$outputDir\$file"
     $ie.silent = $true
     $ie.navigate($requestUri)
 
-    while ($ie.Busy) { Start-Sleep -Milliseconds 500 }
+    while ($ie.Busy) { Start-Sleep -Seconds 1 }
 
     $pdfPrinter = Get-WmiObject -Class Win32_Printer | Where-Object {$_.Name -eq "Microsoft Print to PDF"}
     $pdfPrinter.SetDefaultPrinter() | Out-Null
 
-    Start-Sleep -Milliseconds 500
+    Start-Sleep -Seconds 1
     $ie.ExecWB(6,2) #prints from default printer
-    Start-Sleep -Milliseconds 500
+    Start-Sleep -Seconds 2
 
     $wshell = New-Object -com WScript.Shell
-    Start-Sleep -Milliseconds 500
+    Start-Sleep -Seconds 1
     $wshell.sendkeys("$outputDir\$($file.BaseName).pdf")
-    Start-Sleep -Milliseconds 100
+    Start-Sleep -Seconds 1
     $wshell.sendkeys("{ENTER}")
-    Start-Sleep -Milliseconds 500
+    Start-Sleep -Seconds 1
 
     Remove-Item -Path "$outputDir\$($file.Name)" #remove HTML file from output
 
@@ -119,9 +131,11 @@ foreach ($file in $directoryArray) {
         Write-HostAdv -code 0 -messageMain "File '$($file.Name)' Conversion:     " -messageStatus "SUCCESS"
     } else {
         Write-HostAdv -code 1 -messageMain "File '$($file.Name)' Conversion:     " -messageStatus "FAILED"
+        Write-Host "$logStart Aborting.  "
+        exit
     }
 
-    Start-Sleep -Milliseconds 100
+    Start-Sleep -Seconds 1
 
     #kill ie and cleanup
     $ie.Quit()
@@ -131,5 +145,10 @@ foreach ($file in $directoryArray) {
 
 }
 
-Write-Host "`n$logStart Parser has Completed.  "  -BackgroundColor "Yellow" -ForegroundColor "Black"
+#end time of script running
+$endTime = (Get-Date)
+
+Write-Host "`n$logStart Parser has Completed in $(($endTime-$startTime).totalseconds) Seconds.  "  -BackgroundColor "Yellow" -ForegroundColor "Black"
 Write-Host "$logStart Find Finished PDF Files at `"$outputDir`"  "  -BackgroundColor "Yellow" -ForegroundColor "Black"
+
+pause
